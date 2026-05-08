@@ -224,6 +224,138 @@ cmd_roadmap() {
   fi
 }
 
+cmd_falsifier() {
+  local sub="${1:-list}"
+  shift || true
+  local nexus_origin="$XENO_ROOT/scripts/akida/nexus_origin"
+  case "$sub" in
+    list)
+      echo "${BOLD}xeno 🛸 falsifier inventory${RESET}  (nexus 12-falsifier harness, copy SSOT)"
+      echo
+      printf "%-7s %-25s %-12s %s\n" "F-id" "category" "hardware" "evidence"
+      printf "%-7s %-25s %-12s %s\n" "----" "--------" "--------" "--------"
+      local ev_dir="$XENO_ROOT/state/nexus_akida_evidence"
+      for fid in F-C F-L7 F-M2 F-M3a F-L1 F-L1+ F-L6 F-M1 F-M3b F-M4 F-A F-B; do
+        local cat="" hw="" ev=""
+        case "$fid" in
+          F-C)    cat="architectural";        hw="no" ;;
+          F-L7)   cat="QRNG entropy";          hw="no" ;;
+          F-M2)   cat="gzip compression";      hw="partial" ;;
+          F-M3a)  cat="dispatch routing";      hw="no" ;;
+          F-L1)   cat="J/op energy";           hw="${YELLOW}YES${RESET}" ;;
+          F-L1+)  cat="sub-Landauer sparsity"; hw="${YELLOW}YES${RESET}" ;;
+          F-L6)   cat="Lyapunov sweep";        hw="${YELLOW}YES${RESET}" ;;
+          F-M1)   cat="Gödel-q disagreement";  hw="${YELLOW}YES${RESET}" ;;
+          F-M3b)  cat="Phi substrate-invar";   hw="${YELLOW}YES${RESET}" ;;
+          F-M4)   cat="trace equivalence";     hw="${YELLOW}YES${RESET}" ;;
+          F-A)    cat="blowup phase-7";        hw="${YELLOW}YES${RESET}" ;;
+          F-B)    cat="check_* hot-loop";      hw="${YELLOW}YES${RESET}" ;;
+        esac
+        if [[ -d "$ev_dir" ]]; then
+          local file
+          file=$(ls "$ev_dir"/${fid}_*.json 2>/dev/null | tail -1)
+          if [[ -n "$file" ]]; then
+            ev="$(basename "$file")"
+          else
+            ev="${RED}—${RESET}"
+          fi
+        fi
+        printf "%-7s %-25s %-22s %s\n" "$fid" "$cat" "$hw" "$ev"
+      done
+      ;;
+    run)
+      local fid="${1:-}"
+      if [[ -z "$fid" ]]; then echo "usage: xeno falsifier run <F-id>" >&2; return 2; fi
+      local runner="$nexus_origin/runner.py"
+      if [[ ! -f "$runner" ]]; then
+        echo "${RED}runner.py missing${RESET} at $runner" >&2
+        emit_fallback_warning "nexus_origin"
+        return 91
+      fi
+      shift
+      echo "${CYAN}→ dispatch via xeno copy${RESET}: $runner $fid $*"
+      cd "$nexus_origin" && exec python3 runner.py "$fid" "$@"
+      ;;
+    all)
+      local runner="$nexus_origin/runner.py"
+      if [[ ! -f "$runner" ]]; then echo "${RED}runner.py missing${RESET}" >&2; return 91; fi
+      echo "${CYAN}→ dispatch all eligible falsifiers${RESET}: $runner $*"
+      cd "$nexus_origin" && exec python3 runner.py "$@"
+      ;;
+    *) echo "usage: xeno falsifier {list | run <F-id> [args] | all [args]}" >&2; return 2 ;;
+  esac
+}
+
+cmd_cycle() {
+  local sub="${1:-status}"
+  shift || true
+  case "$sub" in
+    status)
+      echo "${BOLD}xeno 🛸 Akida Cloud cycle status${RESET}"
+      echo
+      local rstart rend
+      rstart=$(secret get akida_cloud.reservation_start 2>/dev/null || echo "?")
+      rend=$(secret get akida_cloud.reservation_end 2>/dev/null || echo "?")
+      echo "  reservation : $rstart → $rend"
+      local now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+      echo "  now (UTC)   : $now"
+      echo "  ssh alias   : $(secret get akida_cloud.ssh_alias 2>/dev/null || echo akida-cloud)"
+      echo "  ssh proxy   : $(secret get akida_cloud.ssh_proxy_host 2>/dev/null || echo ?):$( secret get akida_cloud.ssh_proxy_port 2>/dev/null || echo ?)"
+      echo "  ssh key     : $(secret get akida_cloud.ssh_key_path 2>/dev/null || echo ?)"
+      echo
+      echo "${BOLD}phases${RESET}:"
+      echo "  D-1  prep   : xeno cycle prep   (P1 tarball + P0b smoke + freeze)"
+      echo "  D+0  start  : xeno cycle connect → upload → run"
+      echo "  D+1  end    : xeno cycle exfil → verdict"
+      ;;
+    prep)
+      local script="$XENO_ROOT/scripts/d1_prep/d1_prep_all.sh"
+      if [[ ! -x "$script" ]]; then echo "${RED}D-1 prep script missing${RESET}: $script" >&2; return 1; fi
+      exec "$script" "$@"
+      ;;
+    connect)
+      local alias_n
+      alias_n=$(secret get akida_cloud.ssh_alias 2>/dev/null || echo akida-cloud)
+      echo "${CYAN}→ ssh $alias_n${RESET}"
+      exec ssh "$alias_n" "$@"
+      ;;
+    upload)
+      local script="$XENO_ROOT/scripts/d1_prep/p1_tarball.sh"
+      if [[ ! -x "$script" ]]; then echo "${RED}upload script missing${RESET}: $script" >&2; return 1; fi
+      exec "$script" upload "$@"
+      ;;
+    exfil)
+      local script="$XENO_ROOT/scripts/d1_prep/p6_exfil.sh"
+      if [[ ! -x "$script" ]]; then echo "${RED}exfil script missing${RESET}: $script" >&2; return 1; fi
+      exec "$script" "$@"
+      ;;
+    run)
+      local script="$XENO_ROOT/scripts/d1_prep/d0_run_all.sh"
+      if [[ ! -x "$script" ]]; then echo "${RED}D+0 run script missing${RESET}: $script" >&2; return 1; fi
+      exec "$script" "$@"
+      ;;
+    verdict)
+      local rdir="${1:-$HOME/core/anima/state/akida_cloud_d0_2026_05_09}"
+      if [[ ! -d "$rdir" ]]; then echo "${RED}verdict dir missing${RESET}: $rdir" >&2; return 1; fi
+      echo "${BOLD}xeno cycle verdict${RESET}  (results dir: $rdir)"
+      local pass_count=0 fail_count=0
+      for f in "$rdir"/F-*_*.json; do
+        [[ -f "$f" ]] || continue
+        if grep -q '"verdict": *"PASS"' "$f"; then pass_count=$((pass_count + 1))
+        elif grep -q '"verdict": *"FAIL"' "$f"; then fail_count=$((fail_count + 1))
+        fi
+      done
+      echo "  PASS=$pass_count  FAIL=$fail_count"
+      if [[ $fail_count -eq 0 && $pass_count -gt 0 ]]; then
+        echo "${GREEN}__AKIDA_R__ PASS${RESET}"
+      else
+        echo "${RED}__AKIDA_R__ FAIL${RESET}  (or insufficient evidence)"
+      fi
+      ;;
+    *) echo "usage: xeno cycle {status | prep | connect | upload | run | exfil | verdict}" >&2; return 2 ;;
+  esac
+}
+
 cmd_help() {
   cat <<EOF
 ${BOLD}xeno 🛸${RESET} — non-GPU exotic compute substrate CLI ($VERSION)
@@ -238,6 +370,8 @@ ${BOLD}TOPICS${RESET}
   fallback     degraded mode info (local SSOT only)
   list         substrate inventory (7 substrates × roadmap status)
   roadmap      show substrate roadmap (xeno roadmap akida)
+  falsifier    12-falsifier harness (list | run <F-id> | all) — nexus copy SSOT
+  cycle        Akida Cloud D+0/D+1 cycle (status | prep | connect | upload | run | exfil | verdict)
   --version    print version
   --help       this text
 
@@ -280,10 +414,8 @@ main() {
     fallback)      shift; cmd_fallback "$@" ;;
     list)          shift; cmd_list "$@" ;;
     roadmap)       shift; cmd_roadmap "$@" ;;
-    falsifier|cycle)
-      echo "${YELLOW}TODO Phase 1.5${RESET}: $1 not yet implemented" >&2
-      return 2
-      ;;
+    falsifier)    shift; cmd_falsifier "$@" ;;
+    cycle)        shift; cmd_cycle "$@" ;;
     *) echo "unknown topic: $1" >&2; cmd_help >&2; return 2 ;;
   esac
 }
