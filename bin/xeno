@@ -1,0 +1,291 @@
+#!/usr/bin/env bash
+# ═══════════════════════════════════════════════════════════════════════════
+#  bin/xeno — xeno 🛸 CLI single entry point (topic-dispatched)
+#
+#  PURPOSE
+#    Standalone CLI for non-GPU exotic compute substrate (silicon neuromorphic
+#    + organoid + quantum + random). Bridges to anima + nexus via local path
+#    resolution; fallback to local SSOT only when sister repos unreachable.
+#
+#  TOPICS (8)
+#    status      — global health (xeno repo + 4 source repo reachability)
+#    connect     — bridge probe (anima | nexus | hive | hexa-brain)
+#    invoke      — passthrough (xeno invoke anima <args> | xeno invoke nexus <args>)
+#    fallback    — degraded mode (local SSOT only — raw 91 honest C3 fail-loud)
+#    list        — substrate inventory (7 substrates + roadmap status)
+#    roadmap     — substrate roadmap dispatch (xeno roadmap akida|loihi3|...|qrng)
+#    falsifier   — 12-falsifier harness (anima/nexus/hive merged) [TODO Phase 1.5]
+#    cycle       — Akida Cloud D+0/D+1 cycle dispatch [TODO Phase 1.5]
+#
+#  USAGE
+#    xeno                       → alias for `xeno status`
+#    xeno --version             → print "xeno 0.1.0"
+#    xeno --help                → topic list
+#    xeno <topic>               → topic-level help
+#    xeno <topic> <subcmd> ...  → dispatch
+#
+#  EXIT CODES
+#    0 — success
+#    1 — subcommand error
+#    2 — unknown topic
+#    91 — connection failed, fail-loud (raw 91 honest C3 — silent skip BANNED)
+#
+#  DESIGN
+#    raw#15 — no-hardcode (paths resolved via XENO/HOME)
+#    bedrock mk2 — fallback pattern: degraded mode emits warning, exit 91
+# ═══════════════════════════════════════════════════════════════════════════
+
+set -euo pipefail
+
+VERSION="0.1.0"
+
+# ─── Path resolution (raw#15 no-hardcode) ──────────────────────────────────
+XENO_ROOT="${XENO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+ANIMA_ROOT="${ANIMA_ROOT:-$HOME/core/anima}"
+NEXUS_ROOT="${NEXUS_ROOT:-$HOME/core/nexus}"
+HIVE_ROOT="${HIVE_ROOT:-$HOME/core/hive}"
+HEXA_BRAIN_ROOT="${HEXA_BRAIN_ROOT:-$HOME/core/hexa-brain}"
+
+# ─── Color (raw#15 — TTY-aware) ─────────────────────────────────────────────
+if [[ -t 1 ]]; then
+  RED=$'\033[31m'; GREEN=$'\033[32m'; YELLOW=$'\033[33m'; CYAN=$'\033[36m'; BOLD=$'\033[1m'; RESET=$'\033[0m'
+else
+  RED=""; GREEN=""; YELLOW=""; CYAN=""; BOLD=""; RESET=""
+fi
+
+# ─── Connection probe (returns 0=ok, 91=fail-loud) ─────────────────────────
+probe_repo() {
+  local name="$1" root="$2" entry="${3:-}"
+  if [[ ! -d "$root" ]]; then
+    echo "${RED}✗ $name${RESET} unreachable (path missing: $root)" >&2
+    return 91
+  fi
+  if [[ ! -d "$root/.git" ]]; then
+    echo "${YELLOW}△ $name${RESET} path exists but not a git repo: $root" >&2
+    return 91
+  fi
+  if [[ -n "$entry" && ! -x "$root/$entry" ]]; then
+    echo "${YELLOW}△ $name${RESET} entry not executable: $root/$entry" >&2
+    return 91
+  fi
+  echo "${GREEN}✓ $name${RESET} reachable: $root"
+  return 0
+}
+
+# ─── Fallback emission (raw 91 honest C3 fail-loud, NOT silent skip) ───────
+emit_fallback_warning() {
+  local failed_repo="$1"
+  cat >&2 <<EOF
+
+${BOLD}${YELLOW}━━━ xeno fallback mode ━━━${RESET}
+${YELLOW}Reason${RESET}      : ${failed_repo} unreachable
+${YELLOW}Mode${RESET}        : local-ssot-only (xeno repo standalone)
+${YELLOW}Available${RESET}   : ${XENO_ROOT}/{roadmaps,scripts,state,docs}
+${YELLOW}Unavailable${RESET} : sister repo passthrough (${failed_repo} bridge disabled)
+${YELLOW}Resolution${RESET}  : restore ${failed_repo} OR set ${failed_repo^^}_ROOT to alt path
+${YELLOW}raw 91 honest C3${RESET}: silent skip BANNED — this warning is mandatory
+${BOLD}${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━${RESET}
+
+EOF
+}
+
+# ─── Topics ─────────────────────────────────────────────────────────────────
+
+cmd_status() {
+  echo "${BOLD}${CYAN}xeno 🛸 status${RESET}  (xeno $VERSION)"
+  echo "  root  : $XENO_ROOT"
+  if [[ -d "$XENO_ROOT/.git" ]]; then
+    local branch commit
+    branch=$(cd "$XENO_ROOT" && git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "?")
+    commit=$(cd "$XENO_ROOT" && git rev-parse --short HEAD 2>/dev/null || echo "?")
+    echo "  git   : $branch @ $commit"
+  fi
+  echo
+  echo "${BOLD}sister repos${RESET}:"
+  probe_repo "anima      " "$ANIMA_ROOT" "bin/anima"        || true
+  probe_repo "nexus      " "$NEXUS_ROOT" "bin/nexus-cli"    || true
+  probe_repo "hive       " "$HIVE_ROOT"  ""                 || true
+  probe_repo "hexa-brain " "$HEXA_BRAIN_ROOT" ""            || true
+  echo
+  echo "${BOLD}substrate inventory${RESET}:"
+  for r in akida loihi3 northpole finalspark cortical_labs ionq qrng; do
+    if [[ -f "$XENO_ROOT/roadmaps/.roadmap.$r" ]]; then
+      local lines
+      lines=$(wc -l < "$XENO_ROOT/roadmaps/.roadmap.$r" | tr -d ' ')
+      echo "  ${GREEN}✓${RESET} $r  ($lines lines)"
+    else
+      echo "  ${RED}✗${RESET} $r  (roadmap missing)"
+    fi
+  done
+}
+
+cmd_connect() {
+  local target="${1:-}"
+  if [[ -z "$target" ]]; then
+    echo "${BOLD}xeno connect${RESET} <anima|nexus|hive|hexa-brain|all>" >&2
+    return 2
+  fi
+  case "$target" in
+    anima)      probe_repo "anima"      "$ANIMA_ROOT"      "bin/anima"     || { emit_fallback_warning "anima"; return 91; } ;;
+    nexus)      probe_repo "nexus"      "$NEXUS_ROOT"      "bin/nexus-cli" || { emit_fallback_warning "nexus"; return 91; } ;;
+    hive)       probe_repo "hive"       "$HIVE_ROOT"       ""              || { emit_fallback_warning "hive"; return 91; } ;;
+    hexa-brain) probe_repo "hexa-brain" "$HEXA_BRAIN_ROOT" ""              || { emit_fallback_warning "hexa-brain"; return 91; } ;;
+    all)
+      local rc=0
+      probe_repo "anima"      "$ANIMA_ROOT"      "bin/anima"     || rc=$((rc | 1))
+      probe_repo "nexus"      "$NEXUS_ROOT"      "bin/nexus-cli" || rc=$((rc | 2))
+      probe_repo "hive"       "$HIVE_ROOT"       ""              || rc=$((rc | 4))
+      probe_repo "hexa-brain" "$HEXA_BRAIN_ROOT" ""              || rc=$((rc | 8))
+      [[ $rc -ne 0 ]] && emit_fallback_warning "$rc"
+      return $rc
+      ;;
+    *) echo "unknown target: $target (expected: anima|nexus|hive|hexa-brain|all)" >&2; return 2 ;;
+  esac
+}
+
+cmd_invoke() {
+  local target="${1:-}"
+  shift || true
+  if [[ -z "$target" ]]; then
+    echo "${BOLD}xeno invoke${RESET} <anima|nexus> [args...]" >&2
+    return 2
+  fi
+  case "$target" in
+    anima)
+      if [[ ! -x "$ANIMA_ROOT/bin/anima" ]]; then
+        emit_fallback_warning "anima"
+        return 91
+      fi
+      exec "$ANIMA_ROOT/bin/anima" "$@"
+      ;;
+    nexus)
+      if [[ ! -x "$NEXUS_ROOT/bin/nexus-cli" ]]; then
+        emit_fallback_warning "nexus"
+        return 91
+      fi
+      exec "$NEXUS_ROOT/bin/nexus-cli" "$@"
+      ;;
+    *) echo "unknown invoke target: $target (expected: anima|nexus)" >&2; return 2 ;;
+  esac
+}
+
+cmd_fallback() {
+  echo "${BOLD}${YELLOW}xeno 🛸 fallback mode${RESET} (local SSOT only)"
+  echo
+  echo "Available locally without sister repos:"
+  echo "  ${GREEN}✓${RESET} ${XENO_ROOT}/roadmaps/   — 7 substrate roadmaps"
+  echo "  ${GREEN}✓${RESET} ${XENO_ROOT}/scripts/    — akida runner + 12-falsifier harness (copies)"
+  echo "  ${GREEN}✓${RESET} ${XENO_ROOT}/state/      — evidence + state (87 files)"
+  echo "  ${GREEN}✓${RESET} ${XENO_ROOT}/design/kick/ — omega cycle witness (14)"
+  echo "  ${GREEN}✓${RESET} ${XENO_ROOT}/n6/         — atlas appends (10)"
+  echo "  ${GREEN}✓${RESET} ${XENO_ROOT}/docs/       — setup + cycle docs (5)"
+  echo
+  echo "${YELLOW}NOT available in fallback${RESET}:"
+  echo "  - anima Phi pipeline live execution"
+  echo "  - nexus 216 lenses / drill / blowup"
+  echo "  - hive omega cycle integration"
+  echo "  - hexa-brain EEG live spec link"
+  echo
+  echo "${BOLD}raw 91 honest C3${RESET}: this fallback is fail-loud (NOT silent)."
+}
+
+cmd_list() {
+  echo "${BOLD}xeno 🛸 substrate inventory${RESET}"
+  echo
+  printf "%-16s %-8s %s\n" "substrate" "lines" "vendor / source"
+  printf "%-16s %-8s %s\n" "---------" "-----" "---------------"
+  for r in akida loihi3 northpole finalspark cortical_labs ionq qrng; do
+    if [[ -f "$XENO_ROOT/roadmaps/.roadmap.$r" ]]; then
+      local lines
+      lines=$(wc -l < "$XENO_ROOT/roadmaps/.roadmap.$r" | tr -d ' ')
+      case "$r" in
+        akida)         printf "  %-14s %-8s %s\n" "$r" "$lines" "BrainChip AKD1000 (silicon neuromorphic)" ;;
+        loihi3)        printf "  %-14s %-8s %s\n" "$r" "$lines" "Intel (silicon neuromorphic)" ;;
+        northpole)     printf "  %-14s %-8s %s\n" "$r" "$lines" "IBM (silicon neuromorphic)" ;;
+        finalspark)    printf "  %-14s %-8s %s\n" "$r" "$lines" "FinalSpark (organoid)" ;;
+        cortical_labs) printf "  %-14s %-8s %s\n" "$r" "$lines" "Cortical Labs DishBrain (organoid)" ;;
+        ionq)          printf "  %-14s %-8s %s\n" "$r" "$lines" "IonQ (quantum gate)" ;;
+        qrng)          printf "  %-14s %-8s %s\n" "$r" "$lines" "QRNG (quantum random)" ;;
+      esac
+    fi
+  done
+}
+
+cmd_roadmap() {
+  local r="${1:-}"
+  if [[ -z "$r" ]]; then cmd_list; return 0; fi
+  local f="$XENO_ROOT/roadmaps/.roadmap.$r"
+  if [[ -f "$f" ]]; then
+    cat "$f"
+  else
+    echo "no roadmap: $r" >&2
+    echo "available: akida loihi3 northpole finalspark cortical_labs ionq qrng" >&2
+    return 1
+  fi
+}
+
+cmd_help() {
+  cat <<EOF
+${BOLD}xeno 🛸${RESET} — non-GPU exotic compute substrate CLI ($VERSION)
+
+${BOLD}USAGE${RESET}
+  xeno [topic] [args...]
+
+${BOLD}TOPICS${RESET}
+  status       global health (xeno + 4 source repo reachability + 7 substrate inventory)
+  connect      bridge probe (anima | nexus | hive | hexa-brain | all)
+  invoke       passthrough (xeno invoke anima <args> | xeno invoke nexus <args>)
+  fallback     degraded mode info (local SSOT only)
+  list         substrate inventory (7 substrates × roadmap status)
+  roadmap      show substrate roadmap (xeno roadmap akida)
+  --version    print version
+  --help       this text
+
+${BOLD}EXIT CODES${RESET}
+  0   success
+  1   subcommand error
+  2   unknown topic / malformed
+  91  connection failed (raw 91 honest C3 fail-loud — silent skip BANNED)
+
+${BOLD}ENV${RESET}
+  XENO_ROOT (default: \$HOME/core/xeno)
+  ANIMA_ROOT (default: \$HOME/core/anima)
+  NEXUS_ROOT (default: \$HOME/core/nexus)
+  HIVE_ROOT (default: \$HOME/core/hive)
+  HEXA_BRAIN_ROOT (default: \$HOME/core/hexa-brain)
+
+${BOLD}EXAMPLES${RESET}
+  xeno
+  xeno status
+  xeno connect anima
+  xeno connect all
+  xeno invoke anima status
+  xeno roadmap akida
+  xeno fallback
+
+${BOLD}TRINITY (anima own 32/33/34) compliance${RESET}
+  xeno is execution lane — separate from anima trinity (philosophy/law/hypothesis).
+  Cross-check anima trinity before action; bundle-domain extension forbidden.
+EOF
+}
+
+# ─── Dispatch ───────────────────────────────────────────────────────────────
+main() {
+  case "${1:-status}" in
+    --version|-V) echo "xeno $VERSION" ;;
+    --help|-h|help) cmd_help ;;
+    status)        shift; cmd_status "$@" ;;
+    connect)       shift; cmd_connect "$@" ;;
+    invoke)        shift; cmd_invoke "$@" ;;
+    fallback)      shift; cmd_fallback "$@" ;;
+    list)          shift; cmd_list "$@" ;;
+    roadmap)       shift; cmd_roadmap "$@" ;;
+    falsifier|cycle)
+      echo "${YELLOW}TODO Phase 1.5${RESET}: $1 not yet implemented" >&2
+      return 2
+      ;;
+    *) echo "unknown topic: $1" >&2; cmd_help >&2; return 2 ;;
+  esac
+}
+
+main "$@"
