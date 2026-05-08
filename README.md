@@ -44,12 +44,37 @@ n6/                   10 atlas append files (nexus origin)
 docs/                 5 docs (anima cloud setup + nexus dev kit eval + N-substrate roadmap)
 ```
 
-## Akida Cloud — D+0/D+1 cycle (active)
+## Path policy (anima own 35)
+
+**AKD1000 PRIMARY + Akida Cloud FALLBACK** — physical chip first, cloud is wait/maintenance backup.
+
+| Path | Hardware | Workspace | When active |
+|------|----------|-----------|-------------|
+| **🟢 PRIMARY** | AKD1000 RPi5 dev kit ($1,495, 주문 2026-04-29) | `host.rpi5-akida` (`~/core/.workspace`) | chip 도착 + akida package + AKD1000 device probe rc=0 |
+| **🟡 FALLBACK** | Akida Cloud (Colfax-hosted, ephemeral wipe-on-start) | `host.akida-cloud-colfax` (post-P0a generate) | chip 미수신 / 고장 / maintenance |
+
+자동 detect: `python3 -c "import akida; akida.devices()"` rc → 0=primary, 비0=fallback.
+Path field mandate: verdict.json + state file에 `path = "primary-physical" | "fallback-cloud"` 명시 (own 35 mandate-3).
+raw 91 honest C3: fallback 사용 시 silent skip BANNED, 명시 emit ("USING FALLBACK: <reason>").
+
+### Akida Cloud (FALLBACK lane — current state, chip ETA 미확정)
 
 - Reservation: Sat 2026-05-09 09:00 KST → Sun 2026-05-10 09:00 KST (24h, secure wipe on start)
 - Connection: `ssh akida-cloud` (config in user `~/.ssh/config`, key `~/.ssh/id_ed25519_akida`)
 - Secrets: `secret list | grep akida_cloud` (10 keys in user secret store)
 - Plan: `docs/anima_origin/akida_cloud_d_minus_1_prep_2026_05_08.md`
+- 본 cycle = **fallback 활성 instance** (own 35 mandate-4) — chip 도착 후 primary 자동 활성, fallback deactivate
+
+### AKD1000 PRIMARY (chip 도착 후 활성)
+
+- Hardware: BrainChip Raspberry Pi 5 - AKD1000 Dev Kit ($1,495)
+  - SoC: Broadcom BCM2712 2.4GHz quad-core Arm Cortex-A76 + 800MHz VideoCore VII GPU
+  - RAM: 16GB LPDDR4 + AKD1000 M.2 card (B+M Key) on dev kit header
+  - Includes Meta TF Software Development Environment
+  - shop URL: https://shop.brainchipinc.com/products/akida™-development-kit-raspberry-pi-5-draft
+- Workspace: `host.rpi5-akida` registered via nexus `scripts/akida/host_register.sh` (event-driven, F-L1 PASS evidence required)
+- Activation trigger: chip 도착 → akida package install → host_register.sh fire → cycle path auto-flip
+- CLI: `xeno cycle primary {status | probe | register | run [args]}`
 
 ## Trinity compliance (anima own 33)
 

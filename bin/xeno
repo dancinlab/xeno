@@ -286,13 +286,34 @@ cmd_falsifier() {
   esac
 }
 
+# ─── Path detection (own 35 — AKD1000 primary, Akida Cloud fallback) ───────
+detect_akida_path() {
+  # Probe physical AKD1000 chip via akida package; rc==0 → primary
+  if python3 -c "import akida; devs = akida.devices(); assert len(devs) > 0" 2>/dev/null; then
+    echo "primary"
+  else
+    echo "fallback"
+  fi
+}
+
 cmd_cycle() {
   local sub="${1:-status}"
   shift || true
   case "$sub" in
     status)
-      echo "${BOLD}xeno 🛸 Akida Cloud cycle status${RESET}"
+      echo "${BOLD}xeno 🛸 Akida cycle status${RESET}  (own 35: AKD1000 primary, Akida Cloud fallback)"
       echo
+      local path
+      path=$(detect_akida_path)
+      if [[ "$path" == "primary" ]]; then
+        echo "  ${GREEN}● PRIMARY active${RESET}: AKD1000 physical chip (RPi5 dev kit / host.rpi5-akida)"
+        python3 -c "import akida; print('  akida pkg :', akida.__version__); print('  devices  :', akida.devices())" 2>&1 | head -3
+      else
+        echo "  ${YELLOW}○ PRIMARY unavailable${RESET}: AKD1000 chip 미수신/probe 실패 (.roadmap.akida akida.blk.1)"
+        echo "  ${BOLD}${YELLOW}● FALLBACK active${RESET}: Akida Cloud (Colfax-hosted)"
+      fi
+      echo
+      echo "${BOLD}fallback (Akida Cloud)${RESET}:"
       local rstart rend
       rstart=$(secret get akida_cloud.reservation_start 2>/dev/null || echo "?")
       rend=$(secret get akida_cloud.reservation_end 2>/dev/null || echo "?")
@@ -303,10 +324,49 @@ cmd_cycle() {
       echo "  ssh proxy   : $(secret get akida_cloud.ssh_proxy_host 2>/dev/null || echo ?):$( secret get akida_cloud.ssh_proxy_port 2>/dev/null || echo ?)"
       echo "  ssh key     : $(secret get akida_cloud.ssh_key_path 2>/dev/null || echo ?)"
       echo
+      echo "${BOLD}primary (AKD1000 physical)${RESET}:"
+      echo "  workspace   : host.rpi5-akida (~/core/.workspace, registered post-arrival)"
+      echo "  hardware    : RPi5 + AKD1000 M.2 dev kit (\$1,495, 주문 2026-04-29, ETA 미확정)"
+      echo "  registrar   : nexus scripts/akida/host_register.sh (event-driven, F-L1 PASS evidence required)"
+      echo
       echo "${BOLD}phases${RESET}:"
-      echo "  D-1  prep   : xeno cycle prep   (P1 tarball + P0b smoke + freeze)"
-      echo "  D+0  start  : xeno cycle connect → upload → run"
-      echo "  D+1  end    : xeno cycle exfil → verdict"
+      echo "  D-1  prep      : xeno cycle prep    (P1 tarball + P0b smoke + freeze)"
+      echo "  D+0  start     : xeno cycle connect → upload → run  (path detect 자동)"
+      echo "  D+1  end       : xeno cycle exfil → verdict"
+      echo "  primary trigger: chip 도착 → host_register.sh fire → cycle path auto-flip"
+      ;;
+    primary)
+      local sub2="${1:-status}"
+      shift || true
+      case "$sub2" in
+        status|probe)
+          local path; path=$(detect_akida_path)
+          if [[ "$path" == "primary" ]]; then
+            echo "${GREEN}✓ AKD1000 PRIMARY available${RESET}"
+            python3 -c "import akida; print('  pkg:', akida.__version__); print('  devices:', akida.devices())" 2>&1
+            return 0
+          else
+            echo "${YELLOW}○ AKD1000 PRIMARY unavailable${RESET} — chip 미수신 또는 akida package 미설치"
+            echo "  fallback path active (Akida Cloud)"
+            return 91
+          fi
+          ;;
+        register)
+          # Run nexus host_register.sh for primary path (host.rpi5-akida)
+          local hr="$NEXUS_ROOT/scripts/akida/host_register.sh"
+          if [[ ! -x "$hr" ]]; then echo "${RED}host_register.sh missing${RESET}: $hr" >&2; return 1; fi
+          echo "${CYAN}→ register host.rpi5-akida (PRIMARY)${RESET}"
+          exec "$hr" "$@"
+          ;;
+        run)
+          # Local primary fire (chip + RPi5 environment)
+          local runner="$NEXUS_ROOT/scripts/akida/runner.py"
+          if [[ ! -f "$runner" ]]; then echo "${RED}runner.py missing${RESET}: $runner" >&2; return 1; fi
+          echo "${GREEN}→ PRIMARY run${RESET}: $runner --hardware $*"
+          cd "$NEXUS_ROOT/scripts/akida" && exec python3 runner.py --hardware "$@"
+          ;;
+        *) echo "usage: xeno cycle primary {status | probe | register | run [args]}" >&2; return 2 ;;
+      esac
       ;;
     prep)
       local script="$XENO_ROOT/scripts/d1_prep/d1_prep_all.sh"
@@ -352,7 +412,7 @@ cmd_cycle() {
         echo "${RED}__AKIDA_R__ FAIL${RESET}  (or insufficient evidence)"
       fi
       ;;
-    *) echo "usage: xeno cycle {status | prep | connect | upload | run | exfil | verdict}" >&2; return 2 ;;
+    *) echo "usage: xeno cycle {status | primary <sub> | prep | connect | upload | run | exfil | verdict}" >&2; return 2 ;;
   esac
 }
 
@@ -371,7 +431,8 @@ ${BOLD}TOPICS${RESET}
   list         substrate inventory (7 substrates × roadmap status)
   roadmap      show substrate roadmap (xeno roadmap akida)
   falsifier    12-falsifier harness (list | run <F-id> | all) — nexus copy SSOT
-  cycle        Akida Cloud D+0/D+1 cycle (status | prep | connect | upload | run | exfil | verdict)
+  cycle        Akida cycle dispatcher — own 35: AKD1000 PRIMARY + Cloud FALLBACK
+                 status | primary {status,probe,register,run} | prep | connect | upload | run | exfil | verdict
   --version    print version
   --help       this text
 
