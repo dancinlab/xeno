@@ -7,22 +7,40 @@
 //
 // raw#9 hexa-only for logic — but glue/dispatch is exempt (consistent
 // with anima bin/anima bash entry pattern).
+//
+// argv normalization (nexus run.hexa pattern, cc2ec688):
+//   Mac:           [hexa-interp, script, user-args...]
+//   Linux-stage1:  [hexa, "run", script, user-args...]
+//   Find script-token (ends_with ".hexa"), user args follow.
 
-fn main() -> int {
-    let root = env("HX_PKG_DIR")
-    let xeno_root = if root != "" { root } else { exec("pwd").trim() }
-    let bin = xeno_root + "/bin/xeno"
+fn main() {
+    let _raw = args()
+    let mut _sidx = -1
+    let mut _i = 0
+    while _i < _raw.len() {
+        if _raw[_i].ends_with(".hexa") { _sidx = _i; break }
+        _i = _i + 1
+    }
+    let _user_start = if _sidx >= 0 { _sidx + 1 } else { 1 }
 
-    // argv passthrough
-    let mut argv = ""
-    let argc = args_len()
-    let mut i = 0
-    while i < argc {
-        argv = argv + " " + arg(i)
-        i = i + 1
+    // Resolve xeno root (HX_PKG_DIR if hx-installed, else PWD).
+    let mut root = env("HX_PKG_DIR")
+    if root == "" { root = exec("pwd").trim() }
+    let bin = root + "/bin/xeno"
+
+    // Quote each user arg for shell safety (raw#15 no-hardcode).
+    let mut argv_str = ""
+    let mut j = _user_start
+    while j < _raw.len() {
+        argv_str = argv_str + " " + shq(_raw[j])
+        j = j + 1
     }
 
-    let cmd = bin + argv
-    let rc = exec_passthrough(cmd)
-    return rc
+    // Delegate to bin/xeno; pass stdout through (no capture).
+    let cmd = bin + argv_str
+    print(exec(cmd + " 2>&1"))
+}
+
+fn shq(s: str) -> str {
+    return "'" + s.replace("'", "'\\''") + "'"
 }
