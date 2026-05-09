@@ -62,6 +62,12 @@ class Gen1AKD1000Backend(Backend):
         d = self._device()
         return {"raw": str(d.mesh)[:500], "generation": 1}
 
+    def forward(self, model_path, inputs):
+        raise NotAvailable(
+            "gen1 forward pass requires AKD1000 dev kit + cnn2snn 1.x; "
+            "implementation lands when physical kit arrives"
+        )
+
     def run_inference(self, model_path, n_events):
         raise NotAvailable(
             "gen1 inference path requires cnn2snn 1.x .fbz deploy + AKD1000 "
@@ -83,19 +89,18 @@ class Gen1AKD1000Backend(Backend):
             ),
         }
 
-    def capture_spike_trace(self, n_steps, rate_hz):
+    def capture_spike_trace(self, model_path, n_steps, batch_size=1):
         raise NotAvailable("gen1 spike capture pending dev-kit arrival")
 
     def capabilities(self) -> dict[str, bool]:
         present = self.device_present()
         return {
-            "device_probe":      present,
-            "mesh_introspect":   present,
-            "run_inference":     False,  # SDK path not yet wired
-            "power_measure":     False,  # external instrumentation only
-            "spike_capture":     False,
-            "phi_extract":       False,
-            "trace_equivalence": False,
+            "device_probe":    present,
+            "mesh_introspect": present,
+            "forward":         False,  # SDK path not yet wired
+            "run_inference":   False,
+            "power_measure":   False,  # external instrumentation only
+            "spike_capture":   False,
         }
 
 

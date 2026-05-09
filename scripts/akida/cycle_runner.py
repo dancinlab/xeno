@@ -63,15 +63,31 @@ def cmd_capabilities(args) -> int:
     return 0
 
 
+def _write_record(args, record, prefix) -> None:
+    if not args.out_dir:
+        return
+    os.makedirs(args.out_dir, exist_ok=True)
+    ts = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+    gen = record.get("generation", 0)
+    path = os.path.join(args.out_dir, f"gen{gen}_{prefix}_{ts}.json")
+    with open(path, "w") as f:
+        json.dump(record, f, indent=2, default=str)
+    print(f"[written] {path}", file=sys.stderr)
+
+
+def _no_device_record(info) -> dict:
+    return {
+        "verdict":     "BLOCKED-NO-DEVICE",
+        "device_info": info,
+        "note":        "no device for requested gen; honest stop (raw#15 fail-loud)",
+    }
+
+
 def cmd_measure(args) -> int:
     backend = get_backend(args.akida_gen)
     info = backend.device_info()
     if not info.get("available"):
-        _emit({
-            "verdict":    "BLOCKED-NO-DEVICE",
-            "device_info": info,
-            "note":       "no device for requested gen; honest stop (raw#15 fail-loud)",
-        })
+        _emit(_no_device_record(info))
         return 91
 
     record = {
@@ -85,14 +101,85 @@ def cmd_measure(args) -> int:
         "capabilities": backend.capabilities(),
     }
     _emit(record)
+    _write_record(args, record, "measure")
+    return 0
 
-    if args.out_dir:
-        os.makedirs(args.out_dir, exist_ok=True)
-        ts = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
-        path = os.path.join(args.out_dir, f"gen{backend.generation}_measure_{ts}.json")
-        with open(path, "w") as f:
-            json.dump(record, f, indent=2, default=str)
-        print(f"[written] {path}", file=sys.stderr)
+
+def cmd_spike_trace(args) -> int:
+    backend = get_backend(args.akida_gen)
+    info = backend.device_info()
+    if not info.get("available"):
+        _emit(_no_device_record(info))
+        return 91
+    if not args.model:
+        _emit({
+            "verdict":     "BLOCKED-NO-MODEL",
+            "device_info": info,
+            "note":        "spike-trace requires --model PATH (no synthetic dynamics)",
+        })
+        return 1
+
+    trace = _safe_call(
+        lambda: backend.capture_spike_trace(args.model, args.n_steps, args.batch_size)
+    )
+    record = {
+        "ts":           time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "backend":      type(backend).__name__,
+        "generation":   backend.generation,
+        "device_info":  info,
+        "spike_trace":  trace,
+        "capabilities": backend.capabilities(),
+    }
+    _emit(record)
+    _write_record(args, record, "spike_trace")
+    return 0
+
+
+def cmd_forward(args) -> int:
+    """Caller-supplied inputs forward pass — outputs printed/saved as numpy.
+
+    Inputs from stdin (numpy .npy bytes) or --input-npy PATH. Outputs as
+    numpy .npy via --output-npy PATH (binary), with telemetry on stdout (json).
+    Used by anima/nexus runners to pipe raw outputs into their own analytics.
+    """
+    backend = get_backend(args.akida_gen)
+    info = backend.device_info()
+    if not info.get("available"):
+        _emit(_no_device_record(info))
+        return 91
+    if not args.model:
+        _emit({"verdict": "BLOCKED-NO-MODEL", "note": "forward requires --model"})
+        return 1
+
+    try:
+        import numpy as np  # type: ignore[import-not-found]
+    except ImportError:
+        _emit({"verdict": "BLOCKED-NUMPY", "note": "numpy not installed"})
+        return 91
+
+    if args.input_npy:
+        inputs = np.load(args.input_npy)
+    else:
+        _emit({"verdict": "BLOCKED-NO-INPUT", "note": "forward requires --input-npy PATH"})
+        return 1
+
+    result = _safe_call(lambda: backend.forward(args.model, inputs))
+    if isinstance(result, dict) and "outputs" in result and result["outputs"] is not None:
+        if args.output_npy:
+            np.save(args.output_npy, result["outputs"])
+            result["outputs"] = f"<saved to {args.output_npy}>"
+        else:
+            result["outputs"] = "<numpy array; pass --output-npy to save>"
+    record = {
+        "ts":           time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "backend":      type(backend).__name__,
+        "generation":   backend.generation,
+        "device_info":  info,
+        "forward":      result,
+        "capabilities": backend.capabilities(),
+    }
+    _emit(record)
+    _write_record(args, record, "forward")
     return 0
 
 
@@ -125,6 +212,20 @@ def main(argv: list[str]) -> int:
     sp.add_argument("--n-events", type=int, default=1000)
     sp.add_argument("--out-dir", default=None)
     sp.set_defaults(func=cmd_measure)
+
+    sp = sub.add_parser("spike-trace", help="step-by-step forward pass; per-step latency + output norms")
+    sp.add_argument("--model", required=True, help=".fbz model path")
+    sp.add_argument("--n-steps", type=int, default=100)
+    sp.add_argument("--batch-size", type=int, default=1)
+    sp.add_argument("--out-dir", default=None)
+    sp.set_defaults(func=cmd_spike_trace)
+
+    sp = sub.add_parser("forward", help="forward pass with caller-supplied inputs (.npy)")
+    sp.add_argument("--model", required=True, help=".fbz model path")
+    sp.add_argument("--input-npy", required=True, help=".npy file with int8 inputs")
+    sp.add_argument("--output-npy", default=None, help=".npy file to save outputs")
+    sp.add_argument("--out-dir", default=None)
+    sp.set_defaults(func=cmd_forward)
 
     args = p.parse_args(argv[1:])
     try:

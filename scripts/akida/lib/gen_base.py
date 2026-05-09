@@ -1,4 +1,15 @@
-"""Backend abstract interface — every Akida generation impl satisfies this."""
+"""Backend abstract interface — every Akida generation impl satisfies this.
+
+Scope: this layer is a SUBSTRATE ADAPTER. It owns device probe, model
+deploy, forward pass, and substrate-level telemetry (latency, event count,
+power-if-available). It does NOT own phi calculation, trace bisimulation,
+or other application-level analytics — those live in the caller (anima
+phi calculator, nexus falsifier scripts) which receive the raw outputs
+from `forward()` and apply their own logic.
+
+This split keeps gen-handling SSOT minimal and avoids leaking falsifier
+semantics into substrate code (own 18 simple stack).
+"""
 from __future__ import annotations
 from typing import Any
 
@@ -24,71 +35,96 @@ class Backend:
       * marketing_name    : str    ("AKD1000", "Akida 2 FPGA", ...)
 
     Methods raise NotAvailable when the underlying hardware/SDK does not
-    expose the capability. Falsifier scripts catch NotAvailable and emit
-    honest BLOCKED-* verdicts rather than synthesizing fake values.
+    expose the capability. Callers catch NotAvailable and emit honest
+    BLOCKED-* verdicts rather than synthesizing fake values (raw#15).
     """
 
     generation: int = 0
     version_pattern: str = r"^BC\.A0\."
     marketing_name: str = "unknown"
 
+    # ---- device-level ----
+
     def device_present(self) -> bool:
         raise NotImplementedError
 
     def device_info(self) -> dict[str, Any]:
-        """Return {version, marketing_name, generation, mesh_summary}."""
+        """Return {version, marketing_name, generation, available, ...}."""
         raise NotImplementedError
 
     def mesh_summary(self) -> dict[str, Any]:
-        """NP count, layer types available, dma config — capability snapshot."""
+        """NP count, layer types, dma config — capability snapshot."""
         raise NotImplementedError
 
-    def run_inference(self, model_path: str | None, n_events: int) -> dict[str, Any]:
-        """Deploy model (or empty/synthetic) + run n_events forward passes.
+    # ---- model-level ----
+
+    def forward(self, model_path: str, inputs) -> dict[str, Any]:
+        """Deploy model + run forward pass over `inputs` (numpy array).
+
+        Caller supplies inputs of the right dtype/shape (per model spec).
+        Backend returns raw outputs + substrate telemetry, no semantics.
 
         Returns:
             {
-              "n_events_in":  int,
-              "n_events_out": int,
-              "wall_seconds": float,
+              "outputs":            numpy.ndarray,   # raw model outputs
+              "wall_seconds":       float,
+              "n_events":           int,
               "latency_per_event_us": float,
-              "raw": {...gen-specific telemetry...},
+              "input_shape":        tuple,
+              "output_shape":       tuple,
+              "raw":                {...gen-specific telemetry...},
             }
+
+        Raises NotAvailable when this generation cannot deploy/forward
+        (e.g. gen1 without dev kit, gen3 unreleased).
+        """
+        raise NotImplementedError
+
+    def run_inference(self, model_path: str | None, n_events: int) -> dict[str, Any]:
+        """Convenience wrapper: forward over synthetic random inputs.
+
+        Used for capability probing / latency baselining without requiring
+        a real dataset. Without `model_path` returns telemetry-only stub.
         """
         raise NotImplementedError
 
     def measure_power(self, n_events: int) -> dict[str, Any]:
-        """Return power measurement OR honest 'not-available' record.
+        """Power record OR honest 'not-available' record (raw#15).
 
         Schema:
             {
               "available":               bool,
-              "method":                  str,   # "rapl" | "rtl_estimate_required" | ...
+              "method":                  str,
               "vendor_estimate_required": bool,
               "watts_idle":               float | None,
               "watts_inference":          float | None,
               "joules_per_event":         float | None,
               "note":                     str,
             }
-
-        gen2 (Akida 2 FPGA) returns vendor_estimate_required=True per
-        bc_cloud_examples notebook directive. Caller must NOT synthesize
-        a value when available=False (raw#15 fail-loud).
         """
         raise NotImplementedError
 
-    def capture_spike_trace(self, n_steps: int, rate_hz: float) -> dict[str, Any]:
-        """Spike-trace capture. Used by F-L6 (Lyapunov sweep) + F-L7 (entropy)."""
+    def capture_spike_trace(
+        self, model_path: str, n_steps: int, batch_size: int = 1,
+    ) -> dict[str, Any]:
+        """Step-by-step forward pass; record per-step latency + output norms.
+
+        Used by F-L6 (Lyapunov sweep) and substrate-dynamics analyses to
+        produce a trajectory `[(t, latency_us, ||y||_2), ...]`.
+
+        Without model_path, raises NotAvailable (no synthetic dynamics).
+        """
         raise NotImplementedError
 
+    # ---- capability matrix ----
+
     def capabilities(self) -> dict[str, bool]:
-        """Boolean snapshot of which falsifier lanes this backend supports."""
+        """Boolean snapshot for capability gating in callers."""
         return {
             "device_probe":      False,
             "mesh_introspect":   False,
+            "forward":           False,
             "run_inference":     False,
             "power_measure":     False,
             "spike_capture":     False,
-            "phi_extract":       False,
-            "trace_equivalence": False,
         }

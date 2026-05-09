@@ -394,6 +394,28 @@ cmd_cycle() {
       if [[ ! -x "$script" ]]; then echo "${RED}D+0 run script missing${RESET}: $script" >&2; return 1; fi
       exec "$script" "$@"
       ;;
+    probe|capabilities|measure)
+      # Generation-aware Akida device probe / capability matrix / honest measurement.
+      # Delegates to scripts/akida/cycle_runner.py — SSOT for all akida access.
+      local cr="$XENO_ROOT/scripts/akida/cycle_runner.py"
+      if [[ ! -f "$cr" ]]; then echo "${RED}cycle_runner.py missing${RESET}: $cr" >&2; return 1; fi
+      exec python3 "$cr" "$sub" "$@"
+      ;;
+    remote)
+      # Run cycle_runner inside the Akida Cloud session over ssh — for callers
+      # (anima/nexus runners) that want hardware access without direct akida import.
+      local rsub="${1:-probe}"
+      shift || true
+      local alias_n
+      alias_n=$(secret get akida_cloud.ssh_alias 2>/dev/null || echo akida-cloud)
+      local conda_py='/home/guest/.conda/envs/akida_env/bin/python3'
+      local cr_remote='~/work/xeno/scripts/akida/cycle_runner.py'
+      # Quote each forwarded arg for remote shell safety
+      local fwd=""
+      for a in "$@"; do fwd+=" $(printf '%q' "$a")"; done
+      ssh -o BatchMode=yes "$alias_n" \
+        "$conda_py $cr_remote $rsub$fwd"
+      ;;
     verdict)
       local rdir="${1:-$HOME/core/anima/state/akida_cloud_d0_2026_05_09}"
       if [[ ! -d "$rdir" ]]; then echo "${RED}verdict dir missing${RESET}: $rdir" >&2; return 1; fi
@@ -412,7 +434,7 @@ cmd_cycle() {
         echo "${RED}__AKIDA_R__ FAIL${RESET}  (or insufficient evidence)"
       fi
       ;;
-    *) echo "usage: xeno cycle {status | primary <sub> | prep | connect | upload | run | exfil | verdict}" >&2; return 2 ;;
+    *) echo "usage: xeno cycle {status | primary <sub> | prep | connect | upload | run | exfil | verdict | probe | capabilities | measure | remote <sub> [args]}" >&2; return 2 ;;
   esac
 }
 
@@ -433,6 +455,8 @@ ${BOLD}TOPICS${RESET}
   falsifier    12-falsifier harness (list | run <F-id> | all) — nexus copy SSOT
   cycle        Akida cycle dispatcher — own 35: AKD1000 PRIMARY + Cloud FALLBACK
                  status | primary {status,probe,register,run} | prep | connect | upload | run | exfil | verdict
+                 probe | capabilities | measure       (generation-aware, --akida-gen {auto,1,2,3,...})
+                 remote {probe,capabilities,measure}  (run cycle_runner inside Akida Cloud over ssh)
   --version    print version
   --help       this text
 

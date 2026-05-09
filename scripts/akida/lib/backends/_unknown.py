@@ -28,6 +28,9 @@ class UnknownBackend(Backend):
     def mesh_summary(self) -> dict[str, Any]:
         raise NotAvailable("no device — mesh introspection N/A")
 
+    def forward(self, model_path, inputs):
+        raise NotAvailable("no device — forward pass N/A")
+
     def run_inference(self, model_path, n_events):
         raise NotAvailable("no device — inference N/A")
 
@@ -42,7 +45,7 @@ class UnknownBackend(Backend):
             "note":                     "no Akida device detected",
         }
 
-    def capture_spike_trace(self, n_steps, rate_hz):
+    def capture_spike_trace(self, model_path, n_steps, batch_size=1):
         raise NotAvailable("no device — spike capture N/A")
 
     def capabilities(self) -> dict[str, bool]:

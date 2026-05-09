@@ -35,6 +35,9 @@ class Gen3StubBackend(Backend):
     def mesh_summary(self) -> dict[str, Any]:
         raise NotAvailable("gen3 unreleased — stub only")
 
+    def forward(self, model_path, inputs):
+        raise NotAvailable("gen3 unreleased — stub only")
+
     def run_inference(self, model_path, n_events):
         raise NotAvailable("gen3 unreleased — stub only")
 
@@ -49,7 +52,7 @@ class Gen3StubBackend(Backend):
             "note":                     "BC.A3.* not yet shipped",
         }
 
-    def capture_spike_trace(self, n_steps, rate_hz):
+    def capture_spike_trace(self, model_path, n_steps, batch_size=1):
         raise NotAvailable("gen3 unreleased — stub only")
 
     def capabilities(self) -> dict[str, bool]:
