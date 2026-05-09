@@ -155,7 +155,8 @@ class Gen2A2FPGABackend(Backend):
             signed = params.input_signed
         except (AttributeError, IndexError, ValueError):
             signed = None
-        return np.int8 if signed is True else np.uint8
+        # `signed` may be Python bool, int (1/0), or None — treat any truthy as int8.
+        return np.int8 if bool(signed) else np.uint8
 
     def _summary_capture(self, model) -> dict[str, Any]:
         """Capture model.summary() output + parse mesh allocation evidence.

@@ -176,7 +176,7 @@ xeno/scripts/akida/
 - **Phase 2** ⏳ deferred — `sales@brainchip.com` RTL estimate 요청 보류 (사용자 directive: email pass)
 - **Phase 3** 📅 2026 Q4+ — AKD2500 prototype 입수 후 silicon J/op 측정
 
-### Exfil 결과 (final)
+### Exfil 결과 (Round 2)
 
 `xeno cycle exfil pull` 실행 (p6_exfil.sh nested path fix 적용 후 평탄):
 
@@ -184,6 +184,59 @@ xeno/scripts/akida/
 - `anima/state/akida_cloud_d0_2026_05_09/` — same 10
 - `nexus/state/akida_evidence/` — 150 files (D+0 신규 + historical)
 - archive: `xeno/state/akida_cloud_archive_2026_05_09.tar.zst` (4.8K)
+
+## Round 3 — anima/nexus wrapper로 실제 falsifier 형식 evidence 수집 (13:30~14:00 KST)
+
+**배경**: own 34 mandate-4로 anima/nexus 본 코드는 D+1 close 까지 untouched. xeno SSOT만 사용해서 anima/nexus 평소 형식 evidence를 합성해 채우는 wrapper 두 개 추가.
+
+### 신규 wrapper
+
+`xeno/scripts/akida/nexus_origin/cycle_to_falsifier.py`
+- xeno cycle measure/spike-trace 호출 → nexus `F-X_<ts>.json` 형식 변환
+- 매핑: F-L1 / F-L1+ (cloud_clock_estimate) / F-L6 (latency variance λ proxy) / F-A (multi-pass blowup proxy) / F-C (architectural) / F-M2 (entropy proxy)
+- 모든 lane이 PROXY 임을 verdict 라벨/note에 명시 (raw#15 honest)
+
+`xeno/scripts/akida/anima_origin/cycle_to_phi.py`
+- xeno cycle measure × 2 (different n_events) → anima `F-M3b/F-M4_<ts>.json`
+- 두 Akida self-run 의 outputs distribution stationarity 를 substrate stability proxy 로 측정
+- 진짜 phi (pyphi) / 진짜 trace bisim (CPU mirror) 은 anima 본 lane 책임
+
+### 3 모델 × 2 lane fire 결과
+
+| 모델 | F-L1/L1+ | F-L6 | F-A | F-C | F-M2 | F-M3b | F-M4 |
+|---|---|---|---|---|---|---|---|
+| eye_buffer | BLOCKED-VENDOR | PLAUSIBLE-FAIL-PROXY | PASS | PASS | PLAUSIBLE-PASS | PROXY-FAIL | PROXY-FAIL |
+| jester | BLOCKED-VENDOR | PLAUSIBLE-FAIL-PROXY | PASS | PASS | PLAUSIBLE-PASS | PROXY-FAIL | PROXY-FAIL |
+| centernet | BLOCKED-VENDOR | PLAUSIBLE-PASS | PLAUSIBLE-FAIL-BLOWUP | PASS | PLAUSIBLE-PASS | PROXY-PASS | PROXY-PASS |
+
+**분석**:
+- **F-L1/L1+ 모든 모델 BLOCKED**: cloud는 silicon watts 미제공 (capability gap, 일관)
+- **F-A centernet only FAIL**: CNP1 36 needed > 24 mesh → multi-pass fallback (blowup proxy 정확히 detect)
+- **F-L6 centernet PASS**: CNN은 deterministic, output norm 분산 작음. TENN 은 시간축 의존성으로 분산 큼 → PROXY-FAIL
+- **F-M3b/F-M4 centernet PASS**: 동일 원인 — CNN의 outputs distribution 이 input batch size 변화에 stationary
+- **F-C 전부 PASS**: 24-NP mesh + IpVersion.v2 → 모든 모델에 architectural OK
+
+→ centernet (CNN) 이 가장 falsifier-friendly substrate fingerprint. TENN 모델 (eye / jester) 은 stationarity 약함 — 시간축 dependency 가 invariance proxy 를 깨는 게 expected behavior.
+
+### Round 3 신규 evidence
+
+- nexus: 6 falsifier × 3 모델 = **18 신규 F-X 파일**
+- anima: 2 falsifier × 3 모델 = **6 신규 F-M3b/M4 파일**
+- 총 24 새 evidence
+
+### Exfil 결과 (Round 3, p6_exfil.sh anima_evidence path 추가 후)
+
+- `xeno/state/akida_cloud_d0_2026_05_09/` — 10 files
+- `anima/state/akida_cloud_d0_2026_05_09/` — 10 files
+- `anima/state/akida_evidence/` — 19 files (Round 3 신규 6 + 기존 13)
+- `nexus/state/akida_evidence/` — 168 files (Round 3 신규 18 + 기존 150)
+- archive: `xeno/state/akida_cloud_archive_2026_05_09.tar.zst`
+
+### Round 3 lessons
+
+1. `params.input_signed = 1` (Python int, not `True`) — `is True` identity check 실패. truthy 비교 (`bool(signed)`) 로 fix.
+2. P6 anima_evidence path missing — wrapper 가 `anima/state/akida_evidence/` 에 emit 하므로 P6 destination 추가.
+3. PROXY verdict 명시 중요 — 진짜 측정 lane 이 아닌 substrate fingerprint 만으로도 "어느 모델이 어느 falsifier 와 friendly 한가" insight 산출.
 
 ## Round 2 잔여 작업 (D+1 close 까지 ~20h)
 
