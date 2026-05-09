@@ -25,10 +25,14 @@ case "$cmd" in
     echo "  → $ANIMA_DEST  (anima cloud session state)"
     echo "  → $NEXUS_DEST  (nexus akida_evidence — append)"
     echo "  → $XENO_DEST   (xeno cloud session state — SSOT)"
-    # Cloud expected layout (from upload tarball): ~/work/{anima,nexus,xeno}/...
-    rsync -avh --progress "$alias_n":'~/work/state/' "$ANIMA_DEST/" 2>&1 || echo "  (anima rsync soft-fail)"
+    # Cloud-side dir created by `xeno cycle remote measure --out-dir` is
+    #   ~/work/state/akida_cloud_d0_${DATE}/   (flat, JSON files inside)
+    # We rsync that dir's *contents* (trailing slash) into the local dest,
+    # keeping a flat layout. Earlier versions pulled `~/work/state/` itself
+    # which produced a nested akida_cloud_d0_${DATE}/akida_cloud_d0_${DATE}/.
+    rsync -avh --progress "$alias_n":"~/work/state/akida_cloud_d0_${DATE}/" "$ANIMA_DEST/" 2>&1 || echo "  (anima rsync soft-fail)"
     rsync -avh --progress "$alias_n":'~/work/nexus/state/akida_evidence/' "$NEXUS_DEST/" 2>&1 || echo "  (nexus rsync soft-fail)"
-    rsync -avh --progress "$alias_n":'~/work/state/' "$XENO_DEST/" 2>&1 || echo "  (xeno rsync soft-fail)"
+    rsync -avh --progress "$alias_n":"~/work/state/akida_cloud_d0_${DATE}/" "$XENO_DEST/" 2>&1 || echo "  (xeno rsync soft-fail)"
     echo "[P6] exfil complete. Verify: $0 verify"
     ;;
   verify)

@@ -120,12 +120,82 @@ xeno/scripts/akida/
 - **Framework**: gen-registry + auto-detect + honest capability gating land (xeno/scripts/akida/lib)
 - **첫 valid Akida 2 evidence**: device_info + mesh_summary 측정 OK; power/spike/phi/trace는 honest BLOCKED
 
-## D+0 잔여 작업
+## Round 2 — deep research 반영 + 다중 모델 측정 (10:00–13:00 KST)
 
-- [ ] vendor estimate 요청 (support.akidacloud@brainchip.com) — F-L1 lane 진행 path
-- [ ] gen2_a2_fpga.run_inference 실모델 path: bc_cloud_examples 중 1개 (Eye_Tracking 등) .fbz를 mount해 latency 측정
-- [ ] cnn2snn convert pipeline: anima 측 phi_extractor + Akida 2 deploy (D+1 후 anima repo 작업)
-- [ ] D+1 close 전 exfil (P6) — `state/akida_cloud_d0_2026_05_09/` Mac side rsync
+### 추가 commit (3개)
+
+| commit | 내용 |
+|---|---|
+| `e9c6e59` | docs(akida research) — 30+ source deep research, AKD2000 vapor / AKD2500 Q3 2026 silicon 정정 |
+| `d1e0b3e` | feat(gen2 P0 보강) — model.summary() parse + hw_only path + m.statistics + cloud_clock_estimate + dtype auto-detect + gen3 stub 명칭 (FutureSiliconStub) |
+| `(this)` | feat(p6 fix + 다중 모델 측정) — nested path 평탄화 + jester/centernet 측정 + cycle log 업데이트 |
+
+### 다중 모델 fingerprint (bc_cloud_examples 3개)
+
+| Model | Type | Input | Latency | hw_only | model_np_counts |
+|---|---|---|---|---|---|
+| **eye_buffer** | TENN spatiotemporal | int8 [80,106,2] | **66 ms/event** | ✅ succeeded | CNP1=27, TNP_B=14, SKIP_DMA=12 |
+| **jester** | TENN spatiotemporal | uint8 [100,100,3] | 189 ms/event | ✅ succeeded | (TENN family) |
+| **centernet** | CNN ConvNext | uint8 [384,384,3] | **422 ms/event** | ❌ fallback | HRC=1, CNP1=36 (mesh 24만 존재 → multi-pass) |
+
+핵심 demonstration:
+- **dtype auto-detect**: InputData layer (TENN eye) → int8, InputConvolutional (TENN jester / CNN centernet) → uint8 — backend가 layers[0].parameters.input_signed로 자동 분기
+- **multi-pass fallback**: centernet은 36 CNP1 요구하나 mesh는 24 CNP1만. hw_only=True 실패 → fallback=True로 multi-pass 매핑. 이 분기가 `mapping.hw_only_succeeded / fallback_used / hw_only_error`에 명시 기록
+- **mesh capability ceiling**: mesh_np_counts (CNP1=24, CNP2=18, FNP2=1, FNP3=2, TNP_B=24) 가 모델 요구량 (model_np_counts) 넘으면 multi-pass 자동
+
+### 핵심 발견 (deep research 반영)
+
+| 항목 | D-1 가정 | 실제 |
+|---|---|---|
+| AKD2000 chip | 출시된 silicon | **존재하지 않음** — vapor. silicon은 AKD2500 (TSMC 12nm, 2026-02-13 시작, **Q3 2026 prototype**) |
+| AKD1500 | 미인지 | 2025-11-04 발표, 2026 Q3 양산 (Akida 1 22nm FD-SOI co-processor) |
+| Akida 3 | gen3 stub로 미래 대비 | **공식 발표 전혀 없음** → `FutureSiliconStub` 재명명, BC.A3.* 자동 detect는 plugin 데모 |
+| Power telemetry | 완전 미제공 | `m.statistics.fps + inference_clk + program_clk` 사용 가능 (cloud_clock_estimate). silicon equivalent은 NDA |
+| MetaTF | 최신 | cloud env 2.18 (2024-12), 최신 2.19 (2025-02) — 5개월 lag |
+| cnn2snn 1.x → 2.x | hint만 | API 자체 교체 (`quantizeml.models.quantize`) |
+
+### gen2 capability matrix (final)
+
+```json
+{
+  "device_probe":     true,
+  "mesh_introspect":  true,
+  "forward":          true,
+  "run_inference":    true,
+  "power_measure":    "cloud_clock_estimate",  ← Phase 1 active
+  "spike_capture":    true,
+  "online_learning":  false,                    ← learn_enabled=false
+  "silicon_equivalent_power": false,            ← Phase 2/3 dependent
+  "soc_present":      false                     ← cloud FPGA, not silicon
+}
+```
+
+### F-L1 power lane 3-phase status
+
+- **Phase 1** ✅ active — `m.statistics` cloud_clock_estimate (fps=15.22 / inference_clk=47M for eye_buffer)
+- **Phase 2** ⏳ deferred — `sales@brainchip.com` RTL estimate 요청 보류 (사용자 directive: email pass)
+- **Phase 3** 📅 2026 Q4+ — AKD2500 prototype 입수 후 silicon J/op 측정
+
+### Exfil 결과 (final)
+
+`xeno cycle exfil pull` 실행 (p6_exfil.sh nested path fix 적용 후 평탄):
+
+- `xeno/state/akida_cloud_d0_2026_05_09/` — 10 files (gen2_measure x9 + spike_trace x1)
+- `anima/state/akida_cloud_d0_2026_05_09/` — same 10
+- `nexus/state/akida_evidence/` — 150 files (D+0 신규 + historical)
+- archive: `xeno/state/akida_cloud_archive_2026_05_09.tar.zst` (4.8K)
+
+## Round 2 잔여 작업 (D+1 close 까지 ~20h)
+
+- [x] gen2 P0 보강 5개 (mapping / summary parse / inference_clk / cloud_estimate / learn_enabled)
+- [x] gen3_stub.py → FutureSiliconStub (Akida 3 vapor 명시)
+- [x] cnn2snn 1.x → 2.x migration plan doc (D+1 후 nexus 적용)
+- [x] dtype auto-detect (int8 vs uint8 per layer parameters.input_signed)
+- [x] 다중 모델 measure (eye / jester / centernet)
+- [x] p6_exfil nested path fix
+- [x] re-exfil + archive
+- [ ] (옵션) Phase 2 vendor RTL estimate 메일 — **사용자 directive로 pass**
+- [ ] (D+1 close 후) anima/nexus 측 xeno cli subprocess 패턴 적용 (own 34 mandate-4 lift)
 
 ## Cross-link
 

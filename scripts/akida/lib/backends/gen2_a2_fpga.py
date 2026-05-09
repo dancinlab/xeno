@@ -137,6 +137,26 @@ class Gen2A2FPGABackend(Backend):
         mapping_meta.update(self._summary_capture(model))
         return d, model, mapping_meta
 
+    def _input_dtype_for(self, model):
+        """Detect required input dtype from model first layer parameters.
+
+        InputData layers (e.g. TENN spatiotemporal eye tracking) expose
+        `parameters.input_signed = True` → int8. InputConvolutional layers
+        (e.g. centernet, jester) do not expose input_signed → uint8 (image
+        pixel domain). Falls back to int8 only if explicitly signed,
+        else uint8 (pixel-style models are the more common Akida case).
+        """
+        import numpy as np  # type: ignore[import-not-found]
+        signed = None
+        try:
+            params = model.layers[0].parameters
+            # akida.core.LayerParams raises ValueError("Key X not found") on
+            # missing attrs instead of AttributeError — we catch both.
+            signed = params.input_signed
+        except (AttributeError, IndexError, ValueError):
+            signed = None
+        return np.int8 if signed is True else np.uint8
+
     def _summary_capture(self, model) -> dict[str, Any]:
         """Capture model.summary() output + parse mesh allocation evidence.
 
@@ -198,9 +218,11 @@ class Gen2A2FPGABackend(Backend):
 
         d, model, mapping_meta = self._load_and_map(model_path)
 
-        if inputs.dtype != np.int8:
+        expected_dtype = self._input_dtype_for(model)
+        if inputs.dtype != expected_dtype:
             raise ValueError(
-                f"Akida 2 forward() requires int8 inputs; got {inputs.dtype}"
+                f"Akida 2 forward() expects {expected_dtype.__name__} for this "
+                f"model (first-layer input_signed inferred); got {inputs.dtype}"
             )
 
         ipe_before = len(d.inference_power_events)
@@ -255,8 +277,12 @@ class Gen2A2FPGABackend(Backend):
 
         d, model, mapping_meta = self._load_and_map(model_path)
         in_shape = tuple(model.input_shape)
+        dtype = self._input_dtype_for(model)
         rng = np.random.default_rng(seed=42)
-        X = rng.integers(-128, 127, size=(n_events, *in_shape), dtype=np.int8)
+        if dtype == np.int8:
+            X = rng.integers(-128, 127, size=(n_events, *in_shape), dtype=np.int8)
+        else:
+            X = rng.integers(0, 256, size=(n_events, *in_shape), dtype=np.uint8)
 
         ipe_before = len(d.inference_power_events)
         t0 = time.perf_counter()
@@ -271,6 +297,7 @@ class Gen2A2FPGABackend(Backend):
             "wall_seconds":        wall,
             "latency_per_event_us": (wall / n_events) * 1e6,
             "input_shape":         tuple(X.shape),
+            "input_dtype":         str(X.dtype),
             "output_shape":        tuple(outputs.shape),
             "mapping":             mapping_meta,
             "stats":               stats,
@@ -327,8 +354,12 @@ class Gen2A2FPGABackend(Backend):
                 import numpy as np  # type: ignore[import-not-found]
                 _, model, _ = self._load_and_map(model_path)
                 in_shape = tuple(model.input_shape)
+                dtype = self._input_dtype_for(model)
                 rng = np.random.default_rng(seed=11)
-                X = rng.integers(-128, 127, size=(max(1, n_events), *in_shape), dtype=np.int8)
+                if dtype == np.int8:
+                    X = rng.integers(-128, 127, size=(max(1, n_events), *in_shape), dtype=np.int8)
+                else:
+                    X = rng.integers(0, 256, size=(max(1, n_events), *in_shape), dtype=np.uint8)
                 model.forward(X)
                 cloud_estimate = self._stats_snapshot(model, d)
             except (NotAvailable, ImportError, RuntimeError, ValueError) as e:
@@ -375,12 +406,16 @@ class Gen2A2FPGABackend(Backend):
 
         d, model, mapping_meta = self._load_and_map(model_path)
         in_shape = tuple(model.input_shape)
+        dtype = self._input_dtype_for(model)
         rng = np.random.default_rng(seed=7)
 
         trace = []
         ipe_before = len(d.inference_power_events)
         for step in range(n_steps):
-            x = rng.integers(-128, 127, size=(batch_size, *in_shape), dtype=np.int8)
+            if dtype == np.int8:
+                x = rng.integers(-128, 127, size=(batch_size, *in_shape), dtype=np.int8)
+            else:
+                x = rng.integers(0, 256, size=(batch_size, *in_shape), dtype=np.uint8)
             t0 = time.perf_counter()
             y = model.forward(x)
             dt = time.perf_counter() - t0
