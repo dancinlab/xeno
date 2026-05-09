@@ -238,6 +238,69 @@ xeno/scripts/akida/
 2. P6 anima_evidence path missing — wrapper 가 `anima/state/akida_evidence/` 에 emit 하므로 P6 destination 추가.
 3. PROXY verdict 명시 중요 — 진짜 측정 lane 이 아닌 substrate fingerprint 만으로도 "어느 모델이 어느 falsifier 와 friendly 한가" insight 산출.
 
+## Round 4 — 추가 모델 download + N=1000 batch sweep + 6 모델 통합 fire (14:30~15:00 KST)
+
+### 추가 .fbz 모델 (data.brainchip.com/models/AkidaV2/...)
+
+`/tmp/extra_models/` 에 download + cnn2snn convert:
+
+| 모델 | 도메인 | 크기 | NP allocation |
+|---|---|---|---|
+| `ds_cnn_kws_i8_w8_a8.fbz` | KWS (audio keyword spotting) | 41 KB | HRC=1, CNP1=16, FNP3=1 |
+| `akidanet_imagenet_224_alpha_0.5_i8_w8_a8.fbz` | ImageNet classification | 1.6 MB | HRC=1, CNP1=65, FNP2=1 |
+| `akida_unet_portrait128_i8_w8_a8.fbz` | Portrait segmentation | 1.3 MB | HRC=1, CNP1=68 |
+
+전 모델 `hw_only_succeeded=true` (centernet 만 fallback 발생). akidanet/unet 의 CNP1 65/68 > mesh 24 인데도 성공 — Akida 2 mesh 가 logical NP slot 을 다중 매핑하는 것으로 추정.
+
+### N=1000 batch sweep (ds_cnn_kws 으로)
+
+| N | wall (s) | latency/event (μs) | fps | inference_clk | cycles/event |
+|---|---|---|---|---|---|
+| 100 | 0.125 | 1250 | 800 | 2,947,952 | 29,480 |
+| 500 | 0.578 | 1156 | 865 | 14,253,497 | 28,507 |
+| 1000 | 1.144 | 1144 | 874 | 28,401,830 | **28,402** |
+
+**관찰**: cycles/event 가 **거의 일정 (28,400 ± 500)** — silicon-equivalent latency 추정 시 신뢰 가능한 proxy. fps 는 host↔cloud round-trip overhead amortize 되며 800→874 saturate. 즉 **batch 가 클수록 throughput 효율↑** 이지만 silicon latency 자체는 cycle-stable.
+
+### 6 모델 통합 fire 결과 매트릭스 (8 falsifier)
+
+| 모델 | 도메인 | F-L1/L1+ | F-L6 | F-A | F-C | F-M2 | F-M3b | F-M4 |
+|---|---|---|---|---|---|---|---|---|
+| eye_buffer (TENN) | spatiotemporal | BLOCKED | FAIL-PROXY | PASS | PASS | PASS | FAIL | FAIL |
+| jester (TENN) | spatiotemporal | BLOCKED | FAIL-PROXY | PASS | PASS | PASS | FAIL | FAIL |
+| centernet (CNN) | object det | BLOCKED | PASS | **FAIL-BLOWUP** | PASS | PASS | PASS | PASS |
+| **ds_cnn_kws** (DS-CNN) | audio KWS | BLOCKED | FAIL-PROXY | PASS | PASS | PASS | FAIL | FAIL |
+| **akidanet_imagenet** (CNN) | image cls | BLOCKED | PASS | PASS | PASS | PASS | FAIL | PASS |
+| **akida_unet_portrait** (UNet) | seg | BLOCKED | FAIL-PROXY | PASS | PASS | PASS | FAIL | FAIL |
+
+**추가 패턴**:
+- **CNN classification (centernet, akidanet)**: F-L6 PASS — deterministic, output norm 분산 작음
+- **TENN / DS-CNN / UNet**: F-L6 FAIL — 시간/주파수/공간 dependency 로 stationarity 약함
+- **F-M3b 일관 FAIL**: 5/6 모델에서 self-invariance 약함 — proxy 정의 (n_events × 2 비교) 자체가 stationary 한 모델만 PASS 시킴. CNN 인 akidanet 도 image classification 은 batch 변화에 민감 (top-1 logit shift)
+- **F-M4 mixed**: centernet + akidanet PASS, 나머지 FAIL — output volume 안정성 차이
+- **F-A centernet only FAIL**: 다른 모델은 hw_only fit 성공
+
+### Round 4 신규 evidence
+
+- nexus: 6 falsifier × 3 신규 모델 = **+18**
+- anima: 2 falsifier × 3 신규 모델 = **+6**
+- xeno cloud_d0: N batch sweep 3개 (N=100/500/1000) = **+3**
+- 총 **+27** evidence (Round 4)
+
+### Final exfil 매트릭스
+
+- `xeno/state/akida_cloud_d0_2026_05_09/` — **13 files** (Round 1-2 cycle measure 9 + spike_trace 1 + Round 4 sweep 3)
+- `anima/state/akida_cloud_d0_2026_05_09/` — same 13
+- `anima/state/akida_evidence/` — **25 files** (Round 3+4 신규 12 + 기존 13)
+- `nexus/state/akida_evidence/` — **186 files** (Round 3+4 신규 36 + 기존 150)
+- archive: `xeno/state/akida_cloud_archive_2026_05_09.tar.zst` (5.5K)
+
+### Round 4 lessons
+
+1. **Akida 2 mesh logical NP capacity**: model_np_counts CNP1=65/68 > mesh CNP1=24 인데도 hw_only=True 성공. 추정: Akida 2 mesh 의 NP slot 은 logical CNP1 layer 를 multi-tile 매핑 가능. centernet 만 fallback 발생한 이유는 별도 (skip connection branch 또는 layer 구조 차이).
+2. **inference_clk 가 silicon-proxy 의 가장 안정한 metric**: wall clock + fps 는 host↔cloud overhead 영향을 받지만 cycles/event 는 deterministic. F-L1/L1+ Phase 2 vendor 메일에 inference_clk + workload 만 보내면 silicon J/op 추정 가능.
+3. **다양한 도메인 = 다양한 falsifier behavior**: CNN classification 이 가장 falsifier-friendly (deterministic, batch-stationary). 시간 (TENN), 주파수 (KWS), 공간-dense (UNet seg), object det (centernet) 각각 distinct fingerprint.
+
 ## Round 2 잔여 작업 (D+1 close 까지 ~20h)
 
 - [x] gen2 P0 보강 5개 (mapping / summary parse / inference_clk / cloud_estimate / learn_enabled)
