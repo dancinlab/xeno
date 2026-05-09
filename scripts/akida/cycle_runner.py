@@ -97,7 +97,7 @@ def cmd_measure(args) -> int:
         "device_info":  info,
         "mesh_summary": _safe_call(backend.mesh_summary),
         "inference":    _safe_call(lambda: backend.run_inference(args.model, args.n_events)),
-        "power":        _safe_call(lambda: backend.measure_power(args.n_events)),
+        "power":        _safe_call(lambda: backend.measure_power(args.n_events, model_path=args.model)),
         "capabilities": backend.capabilities(),
     }
     _emit(record)

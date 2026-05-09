@@ -34,7 +34,7 @@ class UnknownBackend(Backend):
     def run_inference(self, model_path, n_events):
         raise NotAvailable("no device — inference N/A")
 
-    def measure_power(self, n_events):
+    def measure_power(self, n_events, model_path=None):
         return {
             "available":                False,
             "method":                   "no_device",

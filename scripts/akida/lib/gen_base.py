@@ -88,7 +88,7 @@ class Backend:
         """
         raise NotImplementedError
 
-    def measure_power(self, n_events: int) -> dict[str, Any]:
+    def measure_power(self, n_events: int, model_path: str | None = None) -> dict[str, Any]:
         """Power record OR honest 'not-available' record (raw#15).
 
         Schema:

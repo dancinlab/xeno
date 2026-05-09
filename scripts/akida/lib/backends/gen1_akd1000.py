@@ -74,7 +74,7 @@ class Gen1AKD1000Backend(Backend):
             "M.2 dev kit; not implemented for cloud (Akida 2 FPGA only)"
         )
 
-    def measure_power(self, n_events):
+    def measure_power(self, n_events, model_path=None):
         return {
             "available":                False,
             "method":                   "external_rapl_plus_usb_shunt",
