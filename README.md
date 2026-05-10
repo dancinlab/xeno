@@ -1,5 +1,7 @@
 # xeno 🛸
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20102972.svg)](https://doi.org/10.5281/zenodo.20102972)
+
 **Standalone repo for non-GPU exotic compute substrate research.**
 
 Tier C scope — silicon neuromorphic + biological organoid + quantum + random:
