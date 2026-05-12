@@ -8,7 +8,7 @@
 //
 //       nexus qmirror <subcmd> [flags...]
 //          ↓
-//       qmirror <subcmd> [flags...]   (standalone CLI from need-singularity/qmirror)
+//       qmirror <subcmd> [flags...]   (standalone CLI from dancinlab/qmirror)
 //
 //   The standalone CLI lives at one of:
 //     1. $QMIRROR_ROOT (env override)             ← preferred

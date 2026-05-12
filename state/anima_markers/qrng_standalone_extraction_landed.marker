@@ -3,9 +3,9 @@ date: 2026-05-04
 extractor: Claude Opus 4.7 (1M context)
 
 repo_path:        /Users/ghost/core/qrng/
-github_url:       https://github.com/need-singularity/qrng
-github_release:   https://github.com/need-singularity/qrng/releases/tag/v1.0.0
-hf_url_intended:  https://huggingface.co/need-singularity/qrng (DEFERRED — see USER_ACTION below)
+github_url:       https://github.com/dancinlab/qrng
+github_release:   https://github.com/dancinlab/qrng/releases/tag/v1.0.0
+hf_url_intended:  https://huggingface.co/dancinlab/qrng (DEFERRED — see USER_ACTION below)
 commit_sha:       429656c87fc3e48fd5fb9145bd21a014b38d60c1
 registry_line:    27 (hexa-lang/tool/pkg/registry.tsv)
 state_dir:        anima/state/qrng_standalone_extraction_2026_05_04/
@@ -31,9 +31,9 @@ USER_ACTION (P0 — required to enable HF mirror):
   1. Re-issue write-scope HF token at https://huggingface.co/settings/tokens
      (current stored token at ~/.cache/huggingface/token + secret huggingface.token returns 401)
   2. Update via: secret set huggingface.token <new_token>
-  3. Create HF repo: hf repos create need-singularity/qrng --type model --token "$(secret get huggingface.token)"
-  4. Set GitHub secret HF_TOKEN at https://github.com/need-singularity/qrng/settings/secrets/actions
-  5. Trigger first mirror: gh workflow run sync-to-hf.yml -R need-singularity/qrng
+  3. Create HF repo: hf repos create dancinlab/qrng --type model --token "$(secret get huggingface.token)"
+  4. Set GitHub secret HF_TOKEN at https://github.com/dancinlab/qrng/settings/secrets/actions
+  5. Trigger first mirror: gh workflow run sync-to-hf.yml -R dancinlab/qrng
 
 USER_ACTION (P1 — staged for review):
   - nexus/cli/qrng.hexa thin shellout router (qmirror v0.3.0 pattern; refactor_log.jsonl c6)
