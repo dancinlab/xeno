@@ -19,11 +19,11 @@ Tier C scope — silicon neuromorphic + biological organoid + quantum + random:
 ## Install
 
 ```bash
-# 1. Install hexa-lang (ships `hexa` + `hx` package manager)
+# 1. Install hexa-lang (gives you `hexa` + `hx` package manager)
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/dancinlab/hexa-lang/main/install.sh)"
 
 # 2. Install xeno
-hx install xeno          # global, pulls latest from registry
+hx install xeno
 ```
 
 ## Run
