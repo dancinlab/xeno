@@ -18,108 +18,30 @@ Tier C scope — silicon neuromorphic + biological organoid + quantum + random:
 
 ## Install
 
-`hx install xeno` (hexa package manager — auto-resolves `dancinlab/xeno` via HX_ORGS probe order).
-
 ```bash
-# 가장 흔한 경로 — registry probe (hexa-pkg → dancinlab → dancinlife)
-hx install xeno
+# 1. Install hexa-lang (ships `hexa` + `hx` package manager)
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/dancinlab/hexa-lang/main/install.sh)"
 
-# 또는 GitHub shortform
-hx install dancinlab/xeno
-
-# 또는 로컬 path (개발 시)
-hx install ~/core/xeno
-
-# 또는 git URL
-hx install https://github.com/dancinlab/xeno
+# 2. Install xeno
+hx install xeno          # global, pulls latest from registry
 ```
 
-설치 후:
-- 실행 shim: `~/.hx/bin/xeno` → `cli/run.hexa` → `bin/xeno` (bash, full logic)
-- 패키지 dir: `~/.hx/packages/xeno` (symlink to repo if local install)
-- install hook: `install.hexa` 실행 — bin chmod + sister repo (anima/nexus/hive/hexa-brain) reachability probe (informational)
-
-검증:
-```bash
-xeno --version              # → "xeno 0.1.0"
-xeno status                 # → 4 sister repo + 7 substrate inventory
-xeno cycle status           # → primary/fallback 자동 detect
-```
-
-업데이트 / 제거:
-```bash
-hx update xeno              # symlink refresh / git pull
-hx remove xeno              # shim + symlink 제거
-hx info xeno                # 설치 정보
-```
-
-## CLI use
-
-`xeno` 단일 entry (8 topics, topic-dispatched).
-
-### 기본 명령
+## Run
 
 ```bash
-xeno                                # alias for `xeno status` (default)
-xeno --version                      # print version
-xeno --help                         # topic list + 예제
-xeno status                         # 4 sister repo reachability + 7 substrate inventory
-xeno list                           # substrate inventory only (lines + vendor)
-xeno fallback                       # degraded mode info (sister repo 없을 때 가용 항목)
-```
-
-### Sister repo 연동
-
-```bash
-xeno connect anima                  # anima reachability probe (rc=91 if 미달)
-xeno connect nexus                  # nexus probe
-xeno connect hive                   # hive probe
-xeno connect hexa-brain             # hexa-brain probe
-xeno connect all                    # 4개 동시 probe (bitmask rc)
-
-xeno invoke anima status            # anima CLI 직접 passthrough
-xeno invoke nexus drill --seed "X"  # nexus CLI passthrough
-```
-
-### Substrate roadmap
-
-```bash
-xeno roadmap                        # === xeno list 와 동일
-xeno roadmap akida                  # .roadmap.akida 본문 출력
-xeno roadmap loihi3                 # .roadmap.loihi3
-xeno roadmap finalspark             # ... 7개 substrate 모두 가능
-```
-
-### Falsifier harness (nexus 12-falsifier copy SSOT)
-
-```bash
-xeno falsifier list                 # 12 falsifier × hardware 요구 × evidence 파일
-xeno falsifier run F-C              # 단일 falsifier dispatch (validate_witness.py 등)
-xeno falsifier run F-L7 --bits 200000 # 인자 passthrough
-xeno falsifier all                  # eligible falsifier 일괄 (--hardware 옵션은 primary path 시)
-xeno falsifier all --hardware       # AKD1000 primary 활성 시 8 post-arrival fire
-```
-
-### Akida cycle (own 35: PRIMARY + FALLBACK)
-
-```bash
-xeno cycle status                   # path auto-detect + primary/fallback 동시 표시
-                                    #   ● PRIMARY active   → AKD1000 chip 활성
-                                    #   ○ PRIMARY unavailable / ● FALLBACK active → cloud lane
-
-# PRIMARY (AKD1000 RPi5 dev kit)
-xeno cycle primary status           # === probe와 동일
-xeno cycle primary probe            # akida.devices() 검증, rc=0=가용 / rc=91=불가
-xeno cycle primary register         # nexus host_register.sh fire (host.rpi5-akida 등재)
-xeno cycle primary run --hardware   # nexus runner.py --hardware 직접 fire
-
-# FALLBACK (Akida Cloud)
-xeno cycle prep                     # D-1 자동 prep (P0b smoke + P1 tarball + P0a generate)
-xeno cycle connect                  # ssh akida-cloud (예약 슬롯 활성 시)
-xeno cycle upload                   # P1 tarball rsync 업로드
-xeno cycle run                      # cloud-side d0_run_all.sh (bootstrap + falsifier + anima N-2/N-3/N-5)
-xeno cycle exfil                    # P6 결과 pull (anima + nexus + xeno destinations)
-xeno cycle verdict                  # __AKIDA_R__ PASS|FAIL emit (PASS/FAIL count 기반)
+xeno status                        # global health (xeno + 4 source repo reachability + 7 substrate inventory)
+xeno connect <target>              # bridge probe (anima | nexus | hive | hexa-brain | all)
+xeno invoke <target> [args...]     # passthrough (xeno invoke anima <args> | xeno invoke nexus <args>)
+xeno fallback                      # degraded mode info (local SSOT only)
+xeno list                          # substrate inventory (7 substrates × roadmap status)
+xeno roadmap [substrate]           # show substrate roadmap (e.g. xeno roadmap akida)
+xeno falsifier {list|run <F-id>|all}   # 12-falsifier harness (nexus copy SSOT)
+xeno cycle <sub>                   # Akida cycle dispatcher — own 35: AKD1000 PRIMARY + Cloud FALLBACK
+                                   #   status | primary {status,probe,register,run} | prep | connect | upload | run | exfil | verdict
+                                   #   probe | capabilities | measure       (generation-aware, --akida-gen {auto,1,2,3,...})
+                                   #   remote {probe,capabilities,measure}  (run cycle_runner inside Akida Cloud over ssh)
+xeno --version                     # print version
+xeno --help                        # full help (topics + examples)
 ```
 
 ### Exit codes
