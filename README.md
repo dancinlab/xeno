@@ -1,6 +1,23 @@
-# xeno 🛸
+<p align="center">
+  <img src="docs/logo.svg" width="140" alt="xeno">
+</p>
 
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20102972.svg)](https://doi.org/10.5281/zenodo.20102972)
+<h1 align="center">👽 xeno</h1>
+
+<p align="center"><strong>Xeno</strong> — Tier C non-GPU exotic compute substrate · neuromorphic · organoid · quantum · QRNG</p>
+
+<p align="center">
+  <a href="hexa.toml"><img alt="License" src="https://img.shields.io/badge/license-MIT-blue"></a>
+  <a href="https://doi.org/10.5281/zenodo.20102972"><img alt="DOI" src="https://zenodo.org/badge/DOI/10.5281/zenodo.20102972.svg"></a>
+  <img alt="Tier" src="https://img.shields.io/badge/tier-C%20exotic-success">
+  <img alt="Substrates" src="https://img.shields.io/badge/substrates-7-informational">
+  <img alt="Falsifiers" src="https://img.shields.io/badge/falsifiers-12-informational">
+  <img alt="Sibling" src="https://img.shields.io/badge/sibling-anima%20·%20nexus%20·%20hive%20·%20hexa--brain-blueviolet">
+</p>
+
+<p align="center">non-GPU · exotic-compute · AKIDA · Loihi3 · Northpole · FinalSpark · Cortical-Labs · IonQ · QRNG · 12-falsifier-harness</p>
+
+---
 
 **Standalone repo for non-GPU exotic compute substrate research.**
 
@@ -89,13 +106,22 @@ xeno cycle primary register                  # workspace 등재
 xeno cycle primary run --hardware            # 8 falsifier physical fire
 ```
 
+## Status
+
+- **Active** — Tier C exotic-compute substrate research; 7 substrates × per-substrate `.roadmap.*` SSOT in `roadmaps/`.
+- AKD1000 PRIMARY (BrainChip RPi5 dev kit, ordered 2026-04-29) + Akida Cloud FALLBACK lane (own 35) — `xeno cycle` dispatcher.
+- 12-falsifier harness copied from nexus origin; integration tests + omega cycle witness files preserved.
+- AGENTS.tape (`v1.2`) carries the foundational `@I id001` identity claim (parent: `dancinlab`).
+- DOI: `10.5281/zenodo.20102972` (Zenodo).
+- Provenance: extracted 2026-05-08 from 4 source repos (anima · nexus · hive · hexa-brain) per anima `.own` own 34; source files **copied** (not yet moved) pending Phase 1.5 stubification.
+
 ## Origin
 
 Extracted 2026-05-08 from 4 source repos (`~/core/anima`, `~/core/nexus`, `~/core/hive`, `~/core/hexa-brain`) per anima `.own` own 34 (xeno standalone SSOT).
 
 Source repo files **copied** (not yet moved) — original files retained until D+0/D+1 Akida Cloud cycle (Sat 2026-05-09 09:00 KST → Sun 2026-05-10 09:00 KST) completes. Post-cycle stubification + cross-link cleanup will land in source repos as Phase 1.5.
 
-## Layout
+## Repo layout
 
 ```
 roadmaps/             7 .roadmap.* — substrate-specific SSOT
@@ -157,7 +183,6 @@ xeno repo는 anima trinity (.roadmap.philosophy + .roadmap.law + .roadmap.hypoth
 
 - A 철학: D3 substrate-coupled paradigm — 본 repo의 모든 substrate가 D3 substrate-coupled 검증 lane
 - B 법칙: own 16 cost watchdog + own 30 checkpoint preservation + own 32/33/34 trinity bundle + standalone authority
-- C 가설: H1 raw#12 cycle (4-stage hypothesis) — 본 repo 각 substrate별 falsifier가 H lane fire 인스턴스
 
 ## Cross-link
 
@@ -167,3 +192,7 @@ xeno repo는 anima trinity (.roadmap.philosophy + .roadmap.law + .roadmap.hypoth
 - nexus `scripts/akida/README.md` — 12-falsifier harness 인덱스 (xeno로 copy 완료)
 - hive `tool/akida_*.hexa` — alpha/delta/theta layer 모듈 (xeno로 copy 완료)
 - hexa-brain `eeg/doc/cross_substrate/*akida*` — N-2 EEG→AKIDA spike pipeline spec (xeno로 copy 완료)
+
+## License
+
+MIT — per `hexa.toml` + `CITATION.cff` (no `LICENSE` file in tree yet; canonical license metadata lives in those two files until a `LICENSE` file lands). Substrate vendor specs (AKIDA · Loihi3 · Northpole · FinalSpark · Cortical Labs · IonQ) cited under fair-use; vendor materials retain their respective rights.
