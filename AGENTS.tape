@@ -43,6 +43,8 @@
 
 # ─── identity ─────────────────────────────────────────────────────────
 @I id001 := "xeno" :: project [active]
+  brief = "Tier C non-GPU exotic compute substrate · AKIDA · Loihi3 · Northpole · FinalSpark · IonQ"
+  parent = "dancinlab"
   one_liner = "Standalone repo for non-GPU exotic compute substrate research — Tier C scope (silicon neuromorphic + biological organoid + quantum + random)."
   doi = "10.5281/zenodo.20102972"
   substrates <<~EOF
